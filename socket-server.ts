@@ -22,7 +22,6 @@ yargs(process.argv.slice(2))
 function handler(argv: any) {
 
     if (cluster.isPrimary) {
-        console.log(`in cluster`)
         let workers: Worker[] = [];
         const NODE_PORTS = argv.ports as string[];
         for (let i = 0; i < NODE_PORTS.length; i++) {
@@ -40,11 +39,10 @@ function handler(argv: any) {
             workers.push(worker);
         }
     } else {
-        console.log(`in worker`)
         if (!process.env.NODE_PORT) {
             throw new Error(`no port given`);
         }
-        if(!process.env.MESSAGE_INTERVAL){
+        if (!process.env.MESSAGE_INTERVAL) {
             throw new Error(`no message interval given`)
         }
 
@@ -54,18 +52,26 @@ function handler(argv: any) {
         let server = createServer(app);
         let io = new Server(server);
 
+        let lastReport = new Date().getTime();
+        let packetsSinceLastReport = 0;
+        let reportNumber = 1;
+        let disconnectCount = 0;
+
         server.listen(PORT, () => {
             console.log(`server listening on port ${PORT}`)
         })
 
-
         io.on('connect', (socket) => {
+
             socket.on('clientMessage', (msg) => {
+                packetsSinceLastReport++;
                 // console.log(`new message from socket ${msg.socket}: ${msg.message}`)
             });
             socket.on("disconnect", reason => {
-                console.log(`socket ${socket.id} disconnected for reason ${reason}`)
+                disconnectCount++;
+                // console.log(`socket ${socket.id} disconnected for reason ${reason}`)
             })
+            socket.join('all_users')
         })
 
         setInterval(() => {
@@ -74,9 +80,24 @@ function handler(argv: any) {
             })
         }, MESSAGE_INTERVAL)
 
-        // setInterval(() => {
-        //     let sockets = io.sockets.sockets;
-        //     console.log(`connected clients ${Object.keys(sockets).length}`)
-        // }, 5000)
+
+        const printReport = () => {
+            const now = new Date().getTime();
+            const durationSinceLastReport = (now - lastReport) / 1000;
+            const packetsPerSeconds = (
+                packetsSinceLastReport / durationSinceLastReport
+            ).toFixed(2);
+            let room = io.sockets.adapter.rooms.get('all_users')
+            if (!room) {
+                return;
+            }
+            console.log(
+                `[${reportNumber++}][port:${process.env.NODE_PORT}] client count:${room.size}; disconnect count:${disconnectCount}; average packets received per second: ${packetsPerSeconds}`
+            );
+
+            packetsSinceLastReport = 0;
+            lastReport = now;
+        };
+        setInterval(printReport, 5000)
     }
 }
