@@ -21,7 +21,7 @@ yargs(process.argv.slice(2))
 
 function handler(argv: any) {
 
-    if (cluster.isPrimary) {
+    if (cluster.isMaster) {
         let workers: Worker[] = [];
         const NODE_PORTS = argv.ports as string[];
         for (let i = 0; i < NODE_PORTS.length; i++) {
